@@ -1,0 +1,88 @@
+#ifndef MAINWINDOW_H
+#define MAINWINDOW_H
+
+#include <QMainWindow>
+#include <QString>
+#include <QTextCodec>
+#include <QAction>
+#include <QMenuBar>
+#include <QMessageBox>
+#include <QStatusBar>
+#include <QToolBar>
+#include <QDebug>
+#include <QTextEdit>
+#include <QFileDialog>
+#include <QTextBrowser>
+#include <QTextEdit>
+#include <QWidget>
+#include <QWebView>
+#include <QtWebKit>
+#include <QWebFrame>
+#include <QTimer>
+#include <QApplication>
+#include <QDebug>
+
+//定义全局变量，点的经纬度
+//static QString lat_;
+//static QString lon_;
+static double lat_[100];
+static double lon_[100];
+static int gpspoints;
+static QJsonArray lat_json;
+static QJsonArray lon_json;
+namespace Ui {
+class MainWindow;
+}
+
+class MainWindow : public QMainWindow
+{
+    Q_OBJECT
+
+public:
+    explicit MainWindow(QWidget *parent = 0);
+    ~MainWindow();
+public slots:
+    void getCoordinate(QString lon,QString lat);
+    
+    void showinfo(QString info);
+
+    void showwarning(QString info);
+private slots:
+
+    
+    void slotPopulateJavaScriptWindowObject();//
+       
+    void on_actionStreet_triggered();
+
+    void on_actionHybrid_triggered();
+
+    void on_locate_clicked();
+
+    void on_trace_clicked();
+
+    void on_actionClear_triggered();
+
+    void on_actionStart_triggered();
+
+    void on_actionShow_triggered();
+
+    void on_actionShow_2_triggered();
+
+    void on_actionTrace_triggered();
+
+    void on_parse_clicked();
+
+private:
+    Ui::MainWindow *ui;
+    QTimer *timer;
+    void setCoordinate(QString lon,QString lat);
+};
+/*
+class locationstatus
+{
+public:
+    static QString lat_;
+    static QString lon_;
+};
+*/
+#endif // MAINWINDOW_H
