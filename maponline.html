@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+	<meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
+	<style type="text/css">
+	body, html,#allmap {width: 100%;height: 100%;overflow: hidden;margin:0;font-family:"微软雅黑";}
+	</style>
+	<script type="text/javascript" src="http://api.map.baidu.com/api?v=2.0&ak=f0kX4Hp2Id6eMHEzERNdnsUdlHOXnOkH	"></script>
+	<script type="text/javascript" src="http://api.map.baidu.com/library/GeoUtils/1.2/src/GeoUtils_min.js"></script>
+	<!--加载鼠标绘制工具-->
+	<script type="text/javascript" src="http://api.map.baidu.com/library/DrawingManager/1.4/src/DrawingManager_min.js"></script>
+	<link rel="stylesheet" href="http://api.map.baidu.com/library/DrawingManager/1.4/src/DrawingManager_min.css" />
+	
+	<title>基于GPS的位置追踪及地理围栏</title>
+</head>
+<body>
+	<div id="allmap"></div>
+</body>
+</html>
+<script type="text/javascript">
+////地图初始化
+var mapOptions={
+
+                minZoom: 3,					//最小级别
+                maxZoom:19,					//最大级别
+                mapType:  BMAP_NORMAL_MAP	//默认街道图
+              }
+			  
+var map = new BMap.Map("allmap",mapOptions);    											// 创建Map实例 命名空间为BMAP
+map.centerAndZoom(new BMap.Point(114.4216315015077, 30.514952358373492), 10);  // 初始化地图,设置中心点坐标和地图级别
+	//添加地图类型控件 街道图和混合图	  
+map.setCurrentCity("武汉");          // 设置地图显示的城市 此项是必须设置的
+map.enableScrollWheelZoom(true);     //开启鼠标滚轮缩放
+
+var top_left_control = new BMap.ScaleControl({anchor: BMAP_ANCHOR_TOP_LEFT});// 左上角，添加比例尺
+var top_left_navigation = new BMap.NavigationControl();  //左上角，添加默认缩放平移控件
+var top_right_navigation = new BMap.NavigationControl({anchor: BMAP_ANCHOR_TOP_RIGHT, type: BMAP_NAVIGATION_CONTROL_SMALL}); //右上角，仅包含平移和缩放按钮
+/*缩放控件type有四种类型:
+BMAP_NAVIGATION_CONTROL_SMALL：仅包含平移和缩放按钮；
+BMAP_NAVIGATION_CONTROL_PAN:仅包含平移按钮；
+BMAP_NAVIGATION_CONTROL_ZOOM：仅包含缩放按钮*/
+map.addControl(top_left_control);        
+map.addControl(top_left_navigation);     
+map.addControl(top_right_navigation);
+
+var overlays = [];		//为覆盖物做准备,把所有的围栏都扔在里面
+var pointlist = [];		//为单个点做准备，把所有的点也扔里面
+var tracelist = [];		//为轨迹做准备，把所有的点扔里面，但不对每个点标注
+var dynamicshowflag = false;	//如果是动态演示，则设为true
+//var myIcon = new BMap.Icon("images/Point.png", new BMap.Size(20,25));//创建点标志(离线图标)
+//var marker = new BMap.Marker(point,{icon:myIcon});   // 创建标注
+//map.addOverlay(marker);                              // 加载标注
+
+//坐标转换完之后的回调函数
+/*		在解析时已换成BD-09坐标，故无需在使用坐标转换API
+translateCallback = function (data){				//坐标转换的回调函数
+      if(data.status === 0) {
+        for (var i = 0; i < data.points.length; i++) {	//判断几个点
+				//alert("come in !");
+				marker = new BMap.Marker(data.points[i])
+				map.addOverlay( marker );
+				map.centerAndZoom(data.points[i],15);	
+				
+			}
+			
+		if(data.points.length === 1){
+				marker.setAnimation(BMAP_ANIMATION_BOUNCE); //单点时加上跳动的动画
+			}
+		else{
+				var polyline = new BMap.Polyline(data.points, {strokeColor:"blue", strokeWeight:2, strokeOpacity:0.5});   //创建折线
+				map.addOverlay(polyline);   //增加折线
+			} 
+        }		  
+}
+*/
+	
+function showlocation(longjitude, latitude)		//根据(longjitude,latitude)定位并添加标记
+{
+
+ /*  var points = [new BMap.Point(longjitude,latitude)];
+   
+   setTimeout(function(){
+        var convertor = new BMap.Convertor();
+        convertor.translate(points, 1, 5, translateCallback)
+    }, 100);
+	*/	
+   //alert(longjitude, latitude);
+   var gpsPoint = new BMap.Point(longjitude, latitude);
+   
+   pointlist.push(gpsPoint);				//将新的定位点压入数组
+   map.panTo(gpsPoint);
+   var marker = new BMap.Marker(gpsPoint); // 创建点
+   map.addOverlay(marker);                 // 加载标注
+   marker.setPosition(gpsPoint);
+   marker.setAnimation(BMAP_ANIMATION_BOUNCE); //跳动的动画
+   //marker.setAnimation(BMAP_ANIMATION_DROP); //坠落的动画
+   map.centerAndZoom(gpsPoint,18);
+}
+
+function QstringToBaiduPoint(longjitude,latitude)		//仅把qt传来的数组转换成可用的point.并存入tracelist当中
+{
+	var lonlist,latlist,point;							//以下为格式转换，分割成可用的数组
+	lonlist = longjitude.substring(1,longjitude.length-1);
+	latlist = latitude.substring(1,latitude.length-1);
+	lonlist = lonlist.split(",");
+	latlist = latlist.split(",");
+	//alert(lonlist.length);
+	if(latlist.length!=lonlist.length)					//解析正确的话二者应该相等
+	{
+		alert("数据解析错误！");
+		return;
+	}
+	//var points=new Array();	
+	for(i=0;i<lonlist.length;i++){
+		
+		point= new BMap.Point(lonlist[i],latlist[i]);
+		tracelist.push(point);									//将每个点压入数组
+		//showlocation(lonlist[i],latlist[i]);					//对每个点进行标记,感觉不必要
+		//document.write("<br>"+lonlist[i]+"<br>"+latlist[i]+"<br>");
+		map.centerAndZoom(point,18);
+	}
+	
+	return latlist.length;
+}
+function showtrace(longjitude,latitude)	//显示运动轨迹
+{
+	tracelist = []; //初始化
+
+	if(QstringToBaiduPoint(longjitude,latitude)!=1)		//如果为多个点，则绘制折线
+	{
+		var sy = new BMap.Symbol(BMap_Symbol_SHAPE_BACKWARD_OPEN_ARROW, {
+		scale: 0.6,//图标缩放大小
+		strokeColor:'#fff',//设置矢量图标的线填充颜色
+		strokeWeight: '2',//设置线宽
+		});
+		
+		var icons = new BMap.IconSequence(sy, '10', '30');
+		// 创建polyline对象
+		var polyline =new BMap.Polyline(tracelist, {
+		enableEditing: false,//是否启用线编辑，默认为false
+		enableClicking: true,//是否响应点击事件，默认为true
+		icons:[icons],
+		strokeWeight:'8',//折线的宽度，以像素为单位
+		strokeOpacity: 0.8,//折线的透明度，取值范围0 - 1
+		strokeColor:"#18a45b" //折线颜色
+		});
+		map.addOverlay(polyline);          //增加折线
+		
+		//showlocation(lonlist[0],latlist[0]);								//首尾点加上标注，还有骚气的动画。。。为适应动态轨迹，还是不加吧，不然丑翻				
+		//showlocation(lonlist[latlist.length-1],latlist[latlist.length-1]);
+	}
+}
+function Isinfence(point)		//判断点是否在围栏内
+{
+	var i=0;					//防止从别的地方引入i从而引起无限循环
+	//alert("Total fence: "+overlays.length);
+	for(i=0;i < overlays.length; i++)
+	{
+		//alert(overlays[i]);
+		if(overlays[i].toString() == '[object Circle]')
+		{
+			if( BMapLib.GeoUtils.isPointInCircle(point,overlays[i])){
+				//ReinforcePC.showinfo("In the Circle fence,and the fence ID : " + i);
+				ReinforcePC.showinfo(1,"ID "+i);		//目的是能正确显示中文
+				//alert("I'm in the circle");
+			}
+			else{
+				ReinforcePC.showinfo(3,"ID "+i);
+				//ReinforcePC.showwarning("Outside the Circle fence,and the fence ID : " + i);
+				//alert("I'm out  of the circle");
+			}
+	
+		}
+		if(overlays[i].toString() == '[object Polygon]')
+		{
+			if( BMapLib.GeoUtils.isPointInPolygon(point,overlays[i])){
+				//ReinforcePC.showinfo("In the Polygon fence,and the fence ID : " + i);
+				ReinforcePC.showinfo(2,"ID "+i);
+				//alert("I'm in the circle");
+			}
+			else{
+				ReinforcePC.showinfo(4,"ID "+i);
+				//ReinforcePC.showwarning("Outside the Polygon fence,and the fence ID : " + i);
+				//alert("I'm out  of the circle");
+			}
+	
+		}
+	}
+}
+function Isinfencedynamic(point)	//动态的判断点是否在围栏内
+{
+	var i=0;					//防止从别的地方引入i从而引起无限循环
+	var circle_flag=false;				//判断点是否在圆内的标志
+	var polygon_flag=false;				//判断点是否在圆内的标志
+	for(i=0;i < overlays.length; i++)
+	{
+		if(overlays[i].toString() == '[object Circle]')
+		{
+			if( BMapLib.GeoUtils.isPointInCircle(point,overlays[i])){
+				//ReinforcePC.showinfo("In the Circle fence,and the fence ID : " + i);
+				circle_flag = true;
+				//alert("I'm in the circle");
+			}
+			else{
+				//ReinforcePC.showwarning("Outside the Circle fence,and the fence ID : " + i);
+				
+				//alert("I'm out  of the circle");
+			}
+	
+		}
+		if(overlays[i].toString() == '[object Polygon]')
+		{
+			if( BMapLib.GeoUtils.isPointInPolygon(point,overlays[i])){
+				//ReinforcePC.showinfo("In the Polygon fence,and the fence ID : " + i);
+				//alert("I'm in the circle");
+				polygon_flag = true;
+			}
+			else{
+				//ReinforcePC.showwarning("Outside the Polygon fence,and the fence ID : " + i);
+				
+				//alert("I'm out  of the circle");
+			}
+	
+		}
+	}
+	return circle_flag||polygon_flag ;
+}
+
+function startfence()			//设置绘制地理围栏
+{
+/*   还是不用这种方法把，实现太难了
+	var menu = new BMap.ContextMenu();
+	var txtMenuItem = [
+		{
+			text:'设置中心点',
+			callback: setcenterCallback	//function(){map.zoomIn()}
+		},
+		{
+			text:'设置圆半径',
+			callback:function(){map.zoomOut()}
+		}
+	];
+	for(var i=0; i < txtMenuItem.length; i++){
+		menu.addItem(new BMap.MenuItem(txtMenuItem[i].text,txtMenuItem[i].callback,100));
+	}
+	map.addContextMenu(menu);
+*/
+
+	//直接调用百度地图API完成鼠标绘制圆形和多边形
+	var overlaycomplete = function(e){
+		if((e.overlay.toString() == '[object Circle]')||(e.overlay.toString() == '[object Polygon]')){	//圆或者多边形的覆盖物
+			overlays.push(e.overlay);
+			//alert("overlays: "+overlays.length);
+		}
+		if(e.overlay.toString() == '[object Marker]'){			//鼠标标记点
+			pointlist.push(e.overlay.getPosition());
+			e.overlay.setAnimation(BMAP_ANIMATION_DROP);
+			//alert(dynamicshowflag);
+			if(true == dynamicshowflag){							//如果是动态演示模式，则执行
+				//Isinfence(e.overlay.getPosition());
+				if(Isinfencedynamic(e.overlay.getPosition()))	//如果前一个点为空，或者不在围栏内，而当前点在，则显示进入地理围栏
+				{
+					if(1==pointlist.length)		//说明当前点是第一个点
+					{
+						//ReinforcePC.showwarning("you have been in a geographical fence !");
+						ReinforcePC.showwarning(1," ");
+						ReinforcePC.setInfenceCoordinate(e.overlay.getPosition().lng , e.overlay.getPosition().lat)
+					}
+					else
+					{
+						if(!Isinfencedynamic(pointlist[pointlist.length-2]))	//说明当前点的前一点不在地理围栏内
+						{
+							//ReinforcePC.showwarning("you have been in a geographical fence !");
+							ReinforcePC.showwarning(1," ");
+							ReinforcePC.setInfenceCoordinate(e.overlay.getPosition().lng , e.overlay.getPosition().lat);
+							//alert(e.overlay.getPosition().lng );
+						}
+					}
+				}
+				else//if(!Isinfencedynamic(e.overlay.getPosition()))	//如果前一个点在围栏内，而当前点不在，则显示逃离地理围栏
+				{
+					if(1==pointlist.length)		//说明当前点是第一个点,然后不显示警告
+					{
+						//ReinforcePC.showwarning("you have been in a geographical fence !");
+					}
+					else
+					{
+						if(Isinfencedynamic(pointlist[pointlist.length-2]))	//说明当前点的前一点在地理围栏内
+						{
+							//ReinforcePC.showwarning("you have been out a geographical fence !");
+							ReinforcePC.showwarning(2," ");
+							ReinforcePC.setOutfenceCoordinate(e.overlay.getPosition().lng , e.overlay.getPosition().lat);
+						}
+					}
+				}
+			}
+		}
+		//alert(e.overlay);
+    };
+	//var makercomplete = function(e){
+    //    pointlist.push(e.overlay);
+    //};
+    var styleOptions = {
+        strokeColor:"red",    //边线颜色。
+        //fillColor:"red",      //填充颜色。当参数为空时，圆形将没有填充效果。
+        strokeWeight: 2,       //边线的宽度，以像素为单位。
+        strokeOpacity: 0.8,	   //边线透明度，取值范围0 - 1。
+        fillOpacity: 0.8,      //填充的透明度，取值范围0 - 1。
+        strokeStyle: 'solid' //边线的样式，solid或dashed。
+    }
+	
+	 //实例化鼠标绘制工具
+    var drawingManager = new BMapLib.DrawingManager(map, {
+        isOpen: false, //是否开启绘制模式
+        enableDrawingTool: true, //是否显示工具栏
+        drawingToolOptions: {
+            anchor: BMAP_ANCHOR_TOP_RIGHT, //位置
+            offset: new BMap.Size(45, 5), //偏离值
+			drawingModes : [
+				BMAP_DRAWING_MARKER,		//点
+				BMAP_DRAWING_CIRCLE,		//圆 
+				//BMAP_DRAWING_POLYLINE,	//折线		
+				BMAP_DRAWING_POLYGON
+				//BMAP_DRAWING_RECTANGLE    //矩形
+			]
+        },
+		
+        circleOptions: styleOptions, //圆的样式
+        //polylineOptions: styleOptions, //线的样式
+        polygonOptions: styleOptions //多边形的样式
+        //rectangleOptions: styleOptions //矩形的样式
+    });  
+	 //添加鼠标绘制工具监听事件，用于获取绘制结果
+    drawingManager.addEventListener('overlaycomplete', overlaycomplete);
+	//drawingManager.addEventListener('makercomplete', function(){ alert("You haved marked a point !")});
+}
+
+function clearAll() 						//清除所有围栏(但不清除点)
+{
+	for(var i = 0; i < overlays.length; i++){
+            map.removeOverlay(overlays[i]);
+			//overlays.pop();
+			//alert(overlays.length);
+        }
+		
+        overlays.length = 0 ;
+		//alert(overlays.length);
+}
+
+function showinfo(){							//显示点是否在围栏内
+	//ReinforcePC.showinfo(overlays[overlays.length-1].getBounds());	
+	//ReinforcePC.showinfo(pointlist[pointlist.length-1].lat);
+	if(0 == overlays.length){
+		//ReinforcePC.showwarning("Please build a geographical fence");
+		ReinforcePC.showwarning(3," ");
+		return ;
+		}
+	if(0 == pointlist.length){
+		//ReinforcePC.showwarning("Please open the NMEA document to parse and locate");
+		ReinforcePC.showwarning(4," ");
+		return ;
+		}
+		
+	//alert(map.getPanes());
+	//alert(overlays.length);
+	//alert(pointlist.length);
+	/*
+	for(var j =0; j<pointlist.length; j++)		//对每个点判断是否在每个fence内
+	{
+		Isinfence(pointlist[j]);				//显示单个点与覆盖物之间的关系
+	}
+	*/
+	
+	Isinfence(pointlist[pointlist.length-1]);	//判断新增的点即可
+}
+
+function dynamictrace(longjitude,latitude)		//动态显示轨迹
+{
+	var i,k = 0;
+	var tracelistslice = [];
+	var TIMER;
+	tracelist = [];
+	showtwopoint=function()
+	{
+		var sy = new BMap.Symbol(BMap_Symbol_SHAPE_BACKWARD_OPEN_ARROW, {
+		scale: 0.6,//图标缩放大小
+		strokeColor:'red',//设置矢量图标的线填充颜色'#fff'
+		strokeWeight: '2',//设置线宽
+		});
+		var icons = new BMap.IconSequence(sy, '10', '30');
+		if(k<tracelist.length-1)
+		{
+			tracelistslice = tracelist.slice(k,k+2);
+			k=k+1;
+		}
+		// 创建polyline对象
+		//alert(k+" "+tracelistslice.length); //验证计时器是否停止
+		
+		var polyline =new BMap.Polyline(tracelistslice, {		//此处应是线段
+		enableEditing: false,//是否启用线编辑，默认为false
+		enableClicking: true,//是否响应点击事件，默认为true
+		icons:[icons],
+		strokeWeight:'8',//折线的宽度，以像素为单位
+		strokeOpacity: 0.8,//折线的透明度，取值范围0 - 1
+		strokeColor:"#18a45b" //折线颜色
+		});
+		map.addOverlay(polyline);          //增加折线
+		map.panTo(tracelistslice[1]);
+		
+		if(k == tracelist.length-1)
+		{
+			clearInterval(TIMER);		//清除计时器
+			//alert("have cleared");
+		}
+		//接下来判断点是否在围栏内
+		if(Isinfencedynamic(tracelistslice[1]))	//如果当前线段的末端在围栏内，那么判断线段的起始点
+		{
+			if(!Isinfencedynamic(tracelistslice[0]))	//如不在，则显示已进入
+			{
+				ReinforcePC.showwarning(1," ");
+				//ReinforcePC.setInfenceCoordinate(e.overlay.getPosition().lng , e.overlay.getPosition().lat);
+				ReinforcePC.setInfenceCoordinate(tracelistslice[1].lng , tracelistslice[1].lat);	//当前点即为进入的经纬度
+				//alert("lng："+e.overlay.getPosition().lng);
+			}
+			else	//如果在，不显示
+			{
+			
+			}
+		}
+		else	//如果当前线段的末端不在围栏内，那么判断线段的起始点
+		{
+			if(Isinfencedynamic(tracelistslice[0]))	//如果在，则显示已出围栏
+			{
+				ReinforcePC.showwarning(2," ");
+				ReinforcePC.setOutfenceCoordinate(tracelistslice[1].lng , tracelistslice[1].lat);	//当前点离开进入的经纬度
+			}
+			else
+			{
+				
+			}
+		}
+		
+	}
+
+	if(QstringToBaiduPoint(longjitude,latitude)!=1)
+	{		
+		TIMER=setInterval(showtwopoint,3000);	//3s后自动执行
+	}
+	//alert(TINMER);
+}
+
+function dynamicshowset()
+{
+	dynamicshowflag = true;	
+}
+
+function showStreetMap()		//显示街道图
+{
+   map.setMapType(BMAP_NORMAL_MAP);
+};
+
+function showSatelliteMap()		//显示卫星图和街道混合图
+{
+   map.setMapType(BMAP_HYBRID_MAP);
+}
+
+function DataInit()
+{
+	overlays = [];		//为覆盖物做准备,把所有的围栏都扔在里面
+	pointlist = [];		//为单个点做准备，把所有的点也扔里面
+	tracelist = [];		//为轨迹做准备，把所有的点扔里面，但不对每个点标注
+	dynamicshowflag = false;	//如果是动态演示，则设为true
+	map.setMapType(BMAP_NORMAL_MAP);
+	map.clearOverlays();
+}
+map.addEventListener("click",function(e){		//监听鼠标点击并显示鼠标对应的经纬度
+	ReinforcePC.getCoordinate(e.point.lng,e.point.lat);
+});
+
+	
+	
+</script>
