@@ -14,7 +14,7 @@ MainWindow::MainWindow(QWidget *parent) :
     setWindowIcon(QIcon(":/new/prefix1/photo.jpg"));
     QString strMapPath="file:///";                              //exe文件所在的绝对路径
     strMapPath+=QCoreApplication::applicationDirPath();
-    strMapPath+="/maponline.html";    //D:\Qt\MyProject\TestMap\build-TestMap-Desktop_Qt_5_5_1_MinGW_32bit-Debug\debug
+    strMapPath+="../../pro2/maponline.html";    //D:\Qt\MyProject\TestMap\build-TestMap-Desktop_Qt_5_5_1_MinGW_32bit-Debug\debug
     QUrl url(strMapPath);
     ui->webView->load(url);     //打开本地的.html文件
     ui->webView->setTextSizeMultiplier(1);//设置网页字体大小
